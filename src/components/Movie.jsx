@@ -153,9 +153,7 @@ Find a film by its title.
                     <Grid
                         templateColumns={{
                             base: "repeat(2, minmax(0, 1fr))",
-                            md: "repeat(3, minmax(0, 1fr))",
-                            lg: "repeat(4, minmax(0, 1fr))",
-                            xl: "repeat(5, minmax(0, 1fr))"
+                            md: "repeat(4, minmax(0, 1fr))"
                         }}
                         gap={{ base: 3, md: 4 }}
                     >
