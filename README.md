@@ -1,8 +1,16 @@
-# Movie Search App
-## Installing Library Package
-* Fetch api using axios
-  * npm i axios
-* To routing between pages
-  * npm i react-router-dom
-* For ui design using chakra ui
-  * npm i @chakra-ui/react @emotion/react @emotion/styled framer-motion 
+# cap-cw-react-movie
+
+A small React movie search. Type a title and the page lists matching films with a poster, year, and type. Results come from the OMDb API.
+
+## How to run
+
+From this folder:
+
+```bash
+npm install
+npm run dev
+```
+
+Open the local address Vite prints, usually http://localhost:5173/.
+
+The page starts with Avengers results. Clear the box and it goes back to that list. If nothing matches, it says no movies were found.
