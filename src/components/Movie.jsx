@@ -56,8 +56,7 @@ const posterLoads = (url) =>
 const MovieCard = ({ movie, showWithoutPoster }) => {
     const poster = detailValue(movie.Poster);
     const [posterOk, setPosterOk] = useState(Boolean(poster));
-    const rating = detailValue(movie.imdbRating);
-    const meta = [rating ? `★ ${rating}` : "", movie.Year].filter(Boolean).join(" · ");
+    const meta = movie.Year;
 
     if (!posterOk && !showWithoutPoster) {
         return null;
@@ -73,7 +72,7 @@ const MovieCard = ({ movie, showWithoutPoster }) => {
             transition="transform 0.15s ease, box-shadow 0.15s ease"
             _hover={{ transform: "translateY(-2px)", boxShadow: "0 10px 22px rgba(40, 30, 20, 0.08)" }}
         >
-            <Box position="relative" pt="148%" bg="#efeae3">
+            <Box position="relative" pt="118%" bg="#efeae3">
                 {posterOk ? (
                     <Image
                         src={poster}
@@ -109,27 +108,6 @@ const MovieCard = ({ movie, showWithoutPoster }) => {
         </Box>
     );
 };
-
-const withDetails = async (movies) =>
-    Promise.all(
-        movies.map(async (movie) => {
-            try {
-                const response = await axios.get(
-                    `https://www.omdbapi.com/?i=${encodeURIComponent(movie.imdbID)}&apikey=5a133d4e`
-                );
-                const data = response.data;
-                if (data.Response === "False") {
-                    return movie;
-                }
-                return {
-                    ...movie,
-                    imdbRating: data.imdbRating
-                };
-            } catch {
-                return movie;
-            }
-        })
-    );
 
 const pageNumbers = (current, count) => {
     if (count <= 5) {
@@ -169,11 +147,10 @@ const MovieApp = () => {
             setStatus("No movies found.");
             return;
         }
-        const detailed = await withDetails(picked);
         if (id !== requestId.current) {
             return;
         }
-        setMovieData(detailed);
+        setMovieData(picked);
         setShowWithoutPoster(!hideBroken);
         setPage(pageNumber);
         setPageCount(Math.ceil(movies.length / VISIBLE_COUNT));
