@@ -7,6 +7,7 @@ const DEFAULT_SEARCH = "avengers";
 const VISIBLE_COUNT = 12;
 const SEARCH_PAGES = 5;
 const SEARCH_DELAY = 500;
+const MIN_QUERY = 3;
 const PAGE_GAP = 700;
 
 const debounce = (fn, delay) => {
@@ -44,6 +45,53 @@ const latestYear = (year) => {
 };
 
 const detailValue = (value) => (value && value !== "N/A" ? value : "");
+
+const queryAttempts = (raw) => {
+    const typed = (raw || "").trim();
+    if (!typed) {
+        return [{ term: DEFAULT_SEARCH, hideBroken: true }];
+    }
+    const words = typed.split(/\s+/);
+    if (words[0].length < MIN_QUERY) {
+        return [];
+    }
+    const attempts = [{ term: words.join(" "), hideBroken: false }];
+    const last = words[words.length - 1];
+    if (words.length > 1 && last.length < MIN_QUERY) {
+        attempts.push({ term: words.slice(0, -1).join(" "), hideBroken: false });
+    }
+    return attempts;
+};
+
+const fetchSearch = async (term) => {
+    const first = await axios.get(
+        `https://www.omdbapi.com/?s=${encodeURIComponent(term)}&page=1&apikey=5a133d4e`
+    );
+    const firstPage = first.data.Search;
+    if (first.data.Response === "False" || !firstPage) {
+        return { movies: [], tooMany: first.data.Error === "Too many results." };
+    }
+    const total = Number(first.data.totalResults) || firstPage.length;
+    const omdbPages = Math.min(SEARCH_PAGES, Math.ceil(total / 10));
+    const rest = await Promise.all(
+        Array.from({ length: omdbPages - 1 }, (_, index) =>
+            axios
+                .get(`https://www.omdbapi.com/?s=${encodeURIComponent(term)}&page=${index + 2}&apikey=5a133d4e`)
+                .catch(() => null)
+        )
+    );
+    const seen = new Set();
+    const movies = [];
+    [first, ...rest].forEach((response) => {
+        (response?.data?.Search || []).forEach((movie) => {
+            if (!seen.has(movie.imdbID)) {
+                seen.add(movie.imdbID);
+                movies.push(movie);
+            }
+        });
+    });
+    return { movies, tooMany: false };
+};
 
 const posterLoads = (url) =>
     new Promise((resolve) => {
@@ -158,60 +206,40 @@ const MovieApp = () => {
     };
 
     const fetchData = async (query) => {
-        const typed = (query || "").trim();
-        const term = typed || DEFAULT_SEARCH;
-        const hideBroken = !typed;
+        const attempts = queryAttempts(query);
+        if (!attempts.length) {
+            return;
+        }
         const id = requestId.current + 1;
         requestId.current = id;
-        hideBrokenRef.current = hideBroken;
-        catalogRef.current = [];
         setPage(1);
         setPageCount(0);
         setStatus("Loading movies...");
 
         try {
-            const first = await axios.get(
-                `https://www.omdbapi.com/?s=${encodeURIComponent(term)}&page=1&apikey=5a133d4e`
-            );
-            if (id !== requestId.current) {
-                return;
+            let found = null;
+            let tooMany = false;
+            for (const attempt of attempts) {
+                const result = await fetchSearch(attempt.term);
+                if (id !== requestId.current) {
+                    return;
+                }
+                tooMany = tooMany || result.tooMany;
+                if (result.movies.length) {
+                    found = { movies: result.movies, hideBroken: attempt.hideBroken };
+                    break;
+                }
             }
-            const firstPage = first.data.Search;
-            if (first.data.Response === "False" || !firstPage) {
+            if (!found) {
                 setMovieData([]);
                 setShowWithoutPoster(false);
-                setStatus("No movies found.");
+                setPageCount(0);
+                setStatus(tooMany ? "Type a bit more of the title." : "No movies found.");
                 return;
             }
 
-            const total = Number(first.data.totalResults) || firstPage.length;
-            const omdbPages = Math.min(SEARCH_PAGES, Math.ceil(total / 10));
-            const rest = await Promise.all(
-                Array.from({ length: omdbPages - 1 }, (_, index) =>
-                    axios
-                        .get(
-                            `https://www.omdbapi.com/?s=${encodeURIComponent(term)}&page=${index + 2}&apikey=5a133d4e`
-                        )
-                        .catch(() => null)
-                )
-            );
-            if (id !== requestId.current) {
-                return;
-            }
-
-            const seen = new Set();
-            const collected = [];
-            [first, ...rest].forEach((response) => {
-                (response?.data?.Search || []).forEach((movie) => {
-                    if (!seen.has(movie.imdbID)) {
-                        seen.add(movie.imdbID);
-                        collected.push(movie);
-                    }
-                });
-            });
-
-            let ordered = [...collected].sort((a, b) => latestYear(b.Year) - latestYear(a.Year));
-            if (hideBroken) {
+            let ordered = [...found.movies].sort((a, b) => latestYear(b.Year) - latestYear(a.Year));
+            if (found.hideBroken) {
                 const checks = await Promise.all(
                     ordered.map((movie) => {
                         const url = detailValue(movie.Poster);
@@ -223,9 +251,17 @@ const MovieApp = () => {
                 }
                 ordered = ordered.filter((_, index) => checks[index]);
             }
+            if (!ordered.length) {
+                setMovieData([]);
+                setShowWithoutPoster(false);
+                setPageCount(0);
+                setStatus("No movies found.");
+                return;
+            }
 
+            hideBrokenRef.current = found.hideBroken;
             catalogRef.current = ordered;
-            await showPage(ordered, 1, hideBroken, id);
+            await showPage(ordered, 1, found.hideBroken, id);
         } catch {
             if (id !== requestId.current) {
                 return;
@@ -257,6 +293,11 @@ const MovieApp = () => {
     }, [debouncedSearch]);
 
     const handleSearchChange = (event) => {
+        const typed = event.target.value.trim();
+        if (typed && typed.split(/\s+/)[0].length < MIN_QUERY) {
+            debouncedSearch.cancel();
+            return;
+        }
         debouncedSearch(event.target.value);
     };
 
